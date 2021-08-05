@@ -33,15 +33,17 @@ const createTransaction = async (request) => {
     }
     if (+checkStock.rows[0].stock === 0) {
       result = { message: 'stock is 0 please update the stock product' };
+    } else if (request.payload.qty > checkStock.rows[0].stock) {
+      result = { message: 'qty can\'t be bigger than stock' };
     } else {
       calculateAmount(request, checkStock, request.payload.qty);
       // updated product stock
       await updateStok(checkStock.rows[0].stock, sku, qty);
       const payloads = objectToArray(request.payload);
       const text = `
-          INSERT INTO adjustment_transaction
-          (sku, qty, amount) 
-          VALUES($1, $2, $3) RETURNING *`;
+            INSERT INTO adjustment_transaction
+            (sku, qty, amount) 
+            VALUES($1, $2, $3) RETURNING *`;
       const res = await pool.query(text, payloads);
       // eslint-disable-next-line prefer-destructuring
       result = res.rows[0];
@@ -81,8 +83,13 @@ const getTransactionBy = async (request) => {
       WHERE sku='${request.params.sku}'
     `;
     const res = await pool.query(text);
+    if (+res.rowCount === 0) {
+      return {
+        data: 'transaction not found',
+      };
+    }
     return {
-      data: res.rows,
+      data: res.rows[0],
     };
   } catch (err) {
     return {
@@ -102,7 +109,7 @@ const deleteTransaction = async (request) => {
     const textProduct = `SELECT stock from product WHERE sku='${sku}'`;
     const lastStock = await pool.query(textProduct);
     if (lastStock.rowCount === 0) {
-      return { message: 'product not found' };
+      return { message: 'transaction not found' };
     }
     // restore product stokck if adjustment_transaction deleted
     const textUdateStockProduct = `UPDATE product SET stock=$1 WHERE sku='${sku}'`;
@@ -112,7 +119,12 @@ const deleteTransaction = async (request) => {
     // delete adjustment_transaction
     const text = `DELETE from adjustment_transaction WHERE sku='${sku}'`;
     const res = await pool.query(text);
-    return { message: res.rowCount };
+    if (+res.rowCount === 0) {
+      return {
+        data: 'transaction not found',
+      };
+    }
+    return { message: 'delete transaction succesfully' };
   } catch (err) {
     return {
       message: err.toString(),
@@ -122,52 +134,65 @@ const deleteTransaction = async (request) => {
 
 const updateTransaction = async (request) => {
   try {
-    // get last stokc in product
-    // const textProduct = `SELECT stock from product WHERE sku='${sku}'`;
-    // const lastStock = await pool.query(textProduct);
+    /* rule for update transaction
+      if params sku not equals in body then create new transaction and delete old transaction
+      else check to transaction with params sku if 1 then update else no update
+    */
     let message;
     // if change sku
     if (request.params.sku !== request.payload.sku) {
       await createTransaction(request);
       await deleteTransaction(request);
-    }
+      message = `update transaction with new sku ${request.params.sku}`;
+    } else {
+      const checkStock = await checkStokProduct(request.params.sku);
+      if (+checkStock.rowCount === 0) {
+        return {
+          data: 'product not found',
+        };
+      }
 
-    const checkStock = await checkStokProduct(request.params.sku);
-    // get last qty
-    const textLastQty = `
-      SELECT qty from adjustment_transaction
-      WHERE sku='${request.params.sku}'
-    `;
-    const checkLastQty = await pool.query(textLastQty);
-    // get qty if same update
-    const textTransaction = `
-      SELECT qty from adjustment_transaction
-      WHERE sku='${request.params.sku}' and qty='${request.payload.qty}'
-    `;
-    const checkTransaction = await pool.query(textTransaction);
-    if (checkTransaction.rowCount === 0) {
-      const tempStok = (+checkStock.rows[0].stock) + (+checkLastQty.rows[0].qty);
-      if (request.payload.qty > tempStok) {
-        message = 'qty can\'t be bigger than stock';
-      } else {
+      // get last qty and validate
+      const textLastQty = `
+       SELECT qty from adjustment_transaction
+       WHERE sku='${request.params.sku}'
+     `;
+      const checkLastQty = await pool.query(textLastQty);
+      if (+checkLastQty.rowCount === 0) {
+        return {
+          data: 'transaction not found',
+        };
+      }
+      // get qty if same update
+      const textTransaction = `
+        SELECT qty from adjustment_transaction
+        WHERE sku='${request.params.sku}' and qty='${request.payload.qty}'
+      `;
+      const checkTransaction = await pool.query(textTransaction);
+      if (+checkTransaction.rowCount === 0) {
+        const tempStok = (+checkStock.rows[0].stock) + (+checkLastQty.rows[0].qty);
+        if (request.payload.qty > tempStok) {
+          message = 'qty can\'t be bigger than stock';
+        } else {
         // update stock product
-        await updateStok(tempStok, request.params.sku, request.payload.qty);
-        // calculate amount
-        calculateAmount(request, checkStock, request.payload.qty);
+          await updateStok(tempStok, request.params.sku, request.payload.qty);
+          // calculate amount
+          calculateAmount(request, checkStock, request.payload.qty);
 
-        const payloads = objectToArray(request.payload);
-        const text = `
+          const payloads = objectToArray(request.payload);
+          const text = `
           UPDATE adjustment_transaction SET sku=$1, qty=$2, amount=$3
           WHERE sku='${request.params.sku}' RETURNING *`;
-        const { rows } = await pool.query(text, payloads);
-        if (rows[0]) {
-          return rows[0];
+          const { rows } = await pool.query(text, payloads);
+          if (rows[0]) {
+            return rows[0];
+          }
+          // eslint-disable-next-line prefer-destructuring
+          message = rows[0];
         }
-        // eslint-disable-next-line prefer-destructuring
-        message = rows[0];
+      } else {
+        message = 'data has updated, but no changes data';
       }
-    } else {
-      message = 'data has updated, but no changes data';
     }
     return { message };
   } catch (err) {

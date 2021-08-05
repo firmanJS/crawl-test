@@ -42,6 +42,11 @@ const getProductBy = async (request) => {
       WHERE sku='${request.params.sku}'
     `;
     const res = await pool.query(text);
+    if (+res.rowCount === 0) {
+      return {
+        data: 'product not found',
+      };
+    }
     return {
       data: res.rows[0],
     };
@@ -59,8 +64,10 @@ const updateProduct = async (request) => {
       UPDATE product SET name=$1, image=$2, description=$3, price=$4, stock=$5
       WHERE sku='${request.params.sku}' RETURNING *`;
     const res = await pool.query(text, payloads);
-    if (res.rows[0]) {
-      return res.rows[0];
+    if (+res.rowCount === 0) {
+      return {
+        data: 'product not found',
+      };
     }
     return res.rows;
   } catch (err) {
@@ -76,7 +83,12 @@ const deleteProduct = async (request) => {
     const textTransaction = `DELETE from adjustment_transaction WHERE sku='${request.params.sku}'`;
     const res = await pool.query(text);
     await pool.query(textTransaction);
-    return { message: res.rowCount };
+    if (+res.rowCount === 0) {
+      return {
+        data: 'product not found',
+      };
+    }
+    return { message: 'delete product succesfully' };
   } catch (err) {
     return {
       message: err.toString(),
