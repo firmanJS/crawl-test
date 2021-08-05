@@ -1,8 +1,11 @@
 /* eslint-disable prefer-spread */
 /* eslint-disable no-await-in-loop */
 /* eslint-disable no-plusplus */
+const format = require('pg-format');
 const xml2js = require('xml2js');
 const axios = require('axios');
+const { pool } = require('../config/db');
+const { objectToArray } = require('../utils');
 
 const syncData = async () => {
   try {
@@ -44,7 +47,6 @@ const syncData = async () => {
           const parseProduct = await xml2js.parseStringPromise(resProduct.data);
           const parsedStock = await xml2js.parseStringPromise(resStock.data);
 
-          const Id = parseProduct.Product.prdNo;
           const Name = parseProduct.Product.prdNm;
           const SKU = parsedStock.ProductStocks.sellerPrdCd;
           const Image = parseProduct.Product.prdImage01;
@@ -53,18 +55,26 @@ const syncData = async () => {
           const Stock = parsedStock.ProductStocks.ProductStock;
 
           dataElevenia.push({
-            Id,
             Name,
-            SKU,
             Image,
+            ProductDetail,
             Price,
             Stock,
-            ProductDetail,
+            SKU,
           });
         }),
       );
     }
-    return Promise.all(promises).then(() => dataElevenia);
+    return Promise.all(promises).then(async () => {
+      const text = format(`INSERT INTO product 
+      (name, image, description, price, stock, sku) VALUES %L on
+      conflict on
+      constraint product_pk do nothing`, objectToArray(dataElevenia));
+      await pool.query(text);
+      return {
+        message: 'sync product success',
+      };
+    });
   } catch (error) {
     return error;
   }

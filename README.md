@@ -21,10 +21,20 @@ PG_DATABASE= # isi dengan database postgre
 ```
 ### Dokumentasi
 
-import `example.postman_collection.json` ke postman
+import `example.postman_collection.json` ke postman, untuk table ada di file `table.sql`
 
 ### Menjalankan aplikasi
 
+instalasi package :
+```bash
+yarn install
+
+or
+
+npm install
+```
+
+running aplikasi package :
 ```bash
 yarn dev
 
