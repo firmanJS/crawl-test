@@ -11,7 +11,9 @@ const createProduct = async (request) => {
     const res = await pool.query(text, payloads);
     return res.rows[0];
   } catch (err) {
-    return err.toString();
+    return {
+      message: err.toString(),
+    };
   }
 };
 
@@ -27,7 +29,9 @@ const getProduct = async (request) => {
       data: res.rows,
     };
   } catch (err) {
-    return err.toString();
+    return {
+      message: err.toString(),
+    };
   }
 };
 
@@ -42,7 +46,9 @@ const getProductBy = async (request) => {
       data: res.rows[0],
     };
   } catch (err) {
-    return err.toString();
+    return {
+      message: err.toString(),
+    };
   }
 };
 
@@ -58,7 +64,9 @@ const updateProduct = async (request) => {
     }
     return res.rows;
   } catch (err) {
-    return err.toString();
+    return {
+      message: err.toString(),
+    };
   }
 };
 
@@ -70,7 +78,9 @@ const deleteProduct = async (request) => {
     await pool.query(textTransaction);
     return { message: res.rowCount };
   } catch (err) {
-    return err.toString();
+    return {
+      message: err.toString(),
+    };
   }
 };
 
